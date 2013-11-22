@@ -1,0 +1,243 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
+        "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+    <title></title>
+    <script type="text/javascript" src="/static/js/jquery.js"></script>
+    <script type="text/javascript" src="/static/js/knockout-2.3.0.js"></script>
+    <script src="http://maps.google.com/maps?file=api&v=2&key=ABQIAAAAeEq19YLZnpE6J2uIs5Io9BT60Ozg8oAvB6f6tprXp7GrsK4jVRRb9A2DRaR-2dsD1bdXZ39-VJ3t_w" type="text/javascript"></script>
+    <link rel='stylesheet' type="text/css" href="/static/css/bootstrap.css"/>
+</head>
+<body>
+{#<pre data-bind="text: ko.toJSON($root, null, 2)"></pre>#}
+
+<div class="container-fluid">
+    <div class="span6 offset3">
+        <h2>Where Art Thou?</h2>
+        <h5>To begin, please select your name from the list.</h5>
+        <ul>
+            <!-- ko foreach: employees -->
+            <li data-bind="text: name, click: $root.selectName.bind($root, $data)"></li>
+            <!-- /ko -->
+        </ul>
+        <h5>Or</h5>
+        <h5>Enter your first and last name separated by a space.</h5>
+        <input data-bind="value: name">
+        <div class="btn btn-primary" data-bind="click: $root.selectName.bind($root, name)">Select</div>
+
+        <div data-bind="visible: name">
+            <hr>
+            <h3>Employee: <span data-bind="text: name"></span></h3>
+
+            <h4>Stats</h4>
+            <h5>Total Locations: <span data-bind="text: totalEmployeeLocations"></span></h5>
+            <h5>Previous Locations</h5>
+            <table>
+                <thead>
+                <tr><th style="min-width: 200px">Time</th><th style="min-width: 200px;">Address</th><th style="min-width: 100px">Longitude</th><th style="min-width: 100px">Latitude</th></tr>
+                </thead>
+                <tbody data-bind="foreach: employeeLocations">
+                <tr>
+                    <td data-bind="text: time"></td>
+                    <td data-bind="text: address"></td>
+                    <td data-bind="text: longitude"></td>
+                    <td data-bind="text: latitude"></td>
+                </tr>
+                </tbody>
+            </table>
+            <hr>
+            <h4>Add New Location</h4>
+            <h5>Enter your location.</h5>
+            <input id='looker' data-bind="value: query">
+            <h5>Maximum number of results.</h5>
+            <input data-bind="value: maxResults" style="width: 60px;">
+            <div class="btn btn-primary" id="lookup-btn">Search</div>
+            <br>
+            <p data-bind="visible: queryReturnMessage"><span data-bind="text: queryReturnMessage"></span></p>
+                <div data-bind="visible: areValues">
+                <h5>List of locations that match your input:</h5>
+                <h6>Select a location to get more info</h6>
+                <table>
+                    <thead>
+                    <tr><th>address</th><th></th></tr>
+                    </thead>
+                    <tbody data-bind="foreach: locations">
+                    <tr>
+                        <td data-bind="text: address"></td>
+                        <td><div class="btn btn-primary btn-mini" data-bind="click: $root.setLocation.bind($root, $data)">Select</div> </td>
+                    </tr>
+                    </tbody>
+                </table>
+
+                <hr>
+                <div data-bind="visible: address">
+                    <h5>Selected Location</h5>
+                    <p>Name: <span data-bind="text: address"></span></p>
+                    <p>latitude: <span id='lat' data-bind="text: latitude"></span></p>
+                    <p>longitude: <span id='lon' data-bind="text: longitude"></span></p>
+                    <div class="btn btn-success" data-bind="click: save, visible: longitude">Save</div>
+                    <span style="margin-left: 10px;" data-bind="text: saveReturnMessage"></span>
+                    <div id="map" style="width: 500px; height: 400px; margin-top: 15px;"></div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+<script>
+
+    var map = new GMap2(document.getElementById("map"));
+    map.setCenter(new GLatLng(51.5,-0.1), 13);
+    map.addControl(new GSmallMapControl());
+    map.addControl(new GMapTypeControl());
+    map.setMapType(G_SATELLITE_MAP);
+
+
+    function GeoCoder() {
+        var self = this;
+        self.longitude = ko.observable();
+        self.latitude = ko.observable();
+        self.query = ko.observable();
+        self.maxResults = ko.observable(100);
+        self.address = ko.observable();
+        self.locations = ko.observableArray();
+        self.saveReturnMessage = ko.observable();
+        self.areValues = ko.observable(false);
+        self.queryReturnMessage = ko.observable();
+        self.name = ko.observable('');
+        self.employees = ko.observableArray();
+        self.employeeLocations = ko.observableArray();
+        self.isNewName = ko.observable();
+        self.totalEmployeeLocations = ko.computed(function () {
+            return self.employeeLocations().length;
+        });
+
+
+        {% for name in employee_names %}
+        self.employees.push(new Employee('{{ name }}'));
+        {% endfor %}
+
+
+        self.setLocation = function(location) {
+            console.log(location);
+            self.longitude(location.longitude());
+            self.latitude(location.latitude());
+            self.address(location.address());
+        };
+
+        $('#lookup-btn').click(function() {
+            self.clear();
+            console.log(self.query());
+            $.ajax({
+                type: "GET",
+                url: "http://api.geonames.org/searchJSON?q=" + self.query() + "&username=dimagi&password=dimagi"
+            }).success(function (response) {
+                        console.log(response);
+                        var size = response.totalResultsCount;
+                        var returned_size = response.geonames.length;
+                        if (returned_size > self.maxResults()) {
+                            returned_size = self.maxResults();
+                        }
+                        if (size == 0) {
+                            self.areValues(false);
+                            self.queryReturnMessage('no results found!');
+                        }
+                        else {
+                            for (var i = 0; i < returned_size; i++) {
+                                var lat = response.geonames[i].lat;
+                                var lng = response.geonames[i].lng;
+                                var address = response.geonames[i].name
+                                console.log(address);
+                                self.locations.push(new Location(lng, lat, address));
+                            }
+                            self.areValues(true);
+                        }
+                    });
+
+        });
+
+        self.save = function() {
+            if (self.longitude() != null && self.latitude() != null) {
+                $.ajax({
+                    type: "POST",
+                    url: "{% url 'save' %}",
+                    data: {
+                        longitude: self.longitude(),
+                        latitude: self.latitude(),
+                        address: self.address(),
+                        name: self.name()
+                    }
+
+                    }).success(function(response) {
+                            self.employeeLocations.push(new Location(self.longitude(), self.latitude(), self.address(), 'now'));
+                            self.saveReturnMessage(response);
+                        });
+            }
+            else {
+
+            }
+        };
+
+        self.selectName = function(employee) {
+            self.employeeLocations([]);
+            self.query(null);
+            self.clear();
+            self.name(employee.name() || employee);
+            $.ajax({
+                type: "POST",
+                url: "{% url 'getLocations' %}",
+                data: {
+                    name: employee.name()
+                }
+            }).success(function(response) {
+                        var response = JSON.parse(response);
+                        var size = response.length;
+                        for (var i = 0; i < size; i++) {
+                            var fields = response[i].fields;
+                            var lat = fields.lat;
+                            var lng = fields.lng;
+                            var time = fields.time;
+                            var address = fields.address;
+                            self.employeeLocations.push(new Location(lng, lat, address, time))
+                        }
+                    });
+        };
+
+        // centers the google map on the lat/lng
+        self.center = ko.computed(function() {
+            var point = new GLatLng(self.latitude(),self.longitude());
+            map.setCenter(point,13);
+        });
+
+    self.clear = function () {
+        self.longitude(null);
+        self.latitude(null);
+        self.address(null);
+        self.saveReturnMessage(null);
+        self.queryReturnMessage(null);
+        self.areValues(false);
+        self.locations([]);
+    };
+
+    }
+
+
+
+    function Location(lng, lat, add, time) {
+        var self = this;
+        self.longitude = ko.observable(lng);
+        self.latitude = ko.observable(lat);
+        self.address = ko.observable(add);
+        self.time = ko.observable(time)
+    }
+
+    function Employee(name) {
+        var self = this;
+        self.name = ko.observable(name);
+    }
+
+
+    ko.applyBindings(new GeoCoder());
+</script>
+</html>
