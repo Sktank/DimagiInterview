@@ -42,6 +42,7 @@ def save(request):
 
         location = Location(lat=lat, lng=lng, address=address, employee=employee, time=datetime.datetime.utcnow())
         location.save()
+
         employee.numLocations += 1
         employee.save()
         return HttpResponse(success_message)

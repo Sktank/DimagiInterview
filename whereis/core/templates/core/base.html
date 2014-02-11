@@ -131,7 +131,7 @@
             console.log(self.query());
             $.ajax({
                 type: "GET",
-                url: "http://api.geonames.org/searchJSON?q=" + self.query() + "&username=dimagi&password=dimagi"
+                url: "https://api.geonames.org/searchJSON?q=" + self.query() + "&username=dimagi&password=dimagi"
             }).success(function (response) {
                         console.log(response);
                         var size = response.totalResultsCount;
